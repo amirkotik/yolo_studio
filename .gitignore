@@ -1,0 +1,34 @@
+# Virtual Environment
+.venv/
+venv/
+env/
+ENV/
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# YOLO / ML Cache & Models
+*.cache
+runs/
+yolo*.pt
+yoloe*.pt
+
+# Workspace data (ignore user projects when sharing codebase, but keep directory structure)
+workspace/*
+!workspace/.gitkeep
+
+# Archives & Temporary Files
+*.zip
+*.tar.gz
+tmp/
+.temp/
+.gemini/
+.vscode/
+.idea/
+.DS_Store
+
+dataset_grapper.py

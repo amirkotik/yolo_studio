@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TeachYOLO — Студия разметки и обучения YOLO26</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            850: '#182234',
+                            900: '#0f172a',
+                            950: '#020617'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome 6 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Fabric.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    <!-- Vue 3 CDN -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="min-h-screen text-slate-900 antialiased bg-slate-100">
+    <div id="app" class="min-h-screen flex flex-col">
+        <!-- Top Navbar -->
+        <header class="glass-header sticky top-0 z-40 px-6 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-8 h-8 rounded bg-slate-900 flex items-center justify-center text-white shadow-sm">
+                    <i class="fa-solid fa-microchip text-sm"></i>
+                </div>
+                <div>
+                    <span class="text-base font-bold text-slate-900 tracking-tight">TeachYOLO</span>
+                </div>
+            </div>
+            <div class="flex items-center space-x-3">
+                <!-- Training Status Badge -->
+                <div v-if="trainStatus.is_running" class="flex items-center space-x-2 px-3 py-1 rounded bg-amber-50 border border-amber-300 text-amber-900 text-xs font-mono animate-pulse">
+                    <i class="fa-solid fa-gear fa-spin text-amber-600"></i>
+                    <span class="font-semibold">ОБУЧЕНИЕ (PID: {{ trainStatus.pid }})</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 max-w-7xl w-full mx-auto px-6 py-6">
+            <!-- Toast Notification -->
+            <transition name="fade">
+                <div v-if="toast.show" class="fixed bottom-6 right-6 z-50 px-4 py-3 rounded shadow-lg border flex items-center space-x-3 text-xs font-mono transition-all duration-300"
+                     :class="toast.type === 'error' ? 'bg-rose-900 border-rose-700 text-white' : 'bg-slate-900 border-slate-700 text-white'">
+                    <i :class="toast.type === 'error' ? 'fa-solid fa-triangle-exclamation text-rose-400' : 'fa-solid fa-check text-emerald-400'" class="text-base"></i>
+                    <span>{{ toast.message }}</span>
+                </div>
+            </transition>
+
+            <!-- VIEW 1: PROJECTS DASHBOARD -->
+            <div v-if="currentView === 'dashboard'" class="space-y-6 animate-fade-in">
+                <!-- Top Bar -->
+                <div class="glass-panel p-5 rounded border-l-4 border-l-slate-900 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <h1 class="text-lg font-bold text-slate-900">Панель управления проектами</h1>
+                        <p class="text-xs text-slate-500 font-mono mt-0.5">Разметка датасетов, раскадровка видео и обучение нейросетей YOLO26.</p>
+                    </div>
+                    <div class="flex items-center space-x-2 flex-shrink-0">
+                        <input ref="zipInput" type="file" accept=".zip" class="hidden" @change="onZipSelect">
+                        <button @click="triggerZipImport" class="btn-secondary text-xs flex items-center space-x-1.5" title="Загрузить архив проекта">
+                            <i class="fa-solid fa-file-import"></i>
+                            <span>Импорт ZIP</span>
+                        </button>
+                        <button @click="showCreateModal = true" class="btn-primary text-xs flex items-center space-x-2">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>Новый проект</span>
+                        </button>
+                        <button @click="fetchProjects" class="btn-secondary text-xs flex items-center space-x-2">
+                            <i class="fa-solid fa-rotate" :class="{'fa-spin': loadingProjects}"></i>
+                            <span>Обновить</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Projects Grid -->
+                <div>
+                    <h2 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center space-x-2 font-mono">
+                        <i class="fa-solid fa-folder"></i>
+                        <span>Проекты ({{ projects.length }})</span>
+                    </h2>
+
+                    <div v-if="projects.length === 0" class="glass-panel p-10 text-center rounded border-dashed">
+                        <i class="fa-solid fa-folder-open text-2xl text-slate-400 mb-2"></i>
+                        <h3 class="text-xs font-bold text-slate-800 uppercase font-mono">Нет активных проектов</h3>
+                        <button @click="showCreateModal = true" class="mt-3 btn-primary text-xs inline-flex items-center space-x-2">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>Создать проект</span>
+                        </button>
+                    </div>
+
+                    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div v-for="proj in projects" :key="proj.name" class="glass-card rounded p-4 flex flex-col justify-between relative group">
+                            <div>
+                                <div class="flex items-start justify-between">
+                                    <div class="flex items-center space-x-3">
+                                        <div class="w-8 h-8 rounded bg-slate-900 text-white flex items-center justify-center font-mono font-bold text-xs">
+                                            {{ proj.name.charAt(0).toUpperCase() }}
+                                        </div>
+                                        <div>
+                                            <h3 class="font-bold text-slate-900 text-sm group-hover:text-blue-600 transition-colors">{{ proj.name }}</h3>
+                                            <p class="text-[10px] text-slate-500 font-mono">Размечено: {{ proj.annotated_images_count }} / {{ proj.images_count }}</p>
+                                        </div>
+                                    </div>
+                                    <button @click.stop="confirmDeleteProject(proj.name)" class="text-slate-400 hover:text-rose-600 p-1" title="Удалить">
+                                        <i class="fa-solid fa-trash text-xs"></i>
+                                    </button>
+                                </div>
+
+                                <div class="mt-4 grid grid-cols-3 gap-1.5 text-center font-mono">
+                                    <div class="bg-slate-50 p-1.5 rounded border border-slate-200">
+                                        <span class="block text-[9px] text-slate-500 uppercase">Файлы</span>
+                                        <span class="font-bold text-slate-800 text-xs">{{ proj.images_count }}</span>
+                                    </div>
+                                    <div class="bg-slate-50 p-1.5 rounded border border-slate-200">
+                                        <span class="block text-[9px] text-slate-500 uppercase">Классы</span>
+                                        <span class="font-bold text-slate-800 text-xs">{{ proj.classes_count }}</span>
+                                    </div>
+                                    <div class="bg-slate-50 p-1.5 rounded border border-slate-200">
+                                        <span class="block text-[9px] text-slate-500 uppercase">Рамки</span>
+                                        <span class="font-bold text-slate-800 text-xs">{{ proj.total_boxes_count }}</span>
+                                    </div>
+                                </div>
+
+                                <div class="mt-3 flex flex-wrap gap-1 font-mono">
+                                    <span v-if="proj.has_dataset" class="badge bg-emerald-100 text-emerald-900 border border-emerald-300">
+                                        <i class="fa-solid fa-check mr-1 text-[9px]"></i> Датасет готов
+                                    </span>
+                                    <span v-if="proj.runs_count > 0" class="badge bg-slate-900 text-white">
+                                        Моделей: {{ proj.runs_count }}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="mt-4 pt-2.5 border-t border-slate-200 flex items-center justify-between font-mono">
+                                <span class="text-[10px] text-slate-400">workspace/{{ proj.name }}</span>
+                                <div class="flex items-center space-x-1">
+                                    <button @click.stop="exportProjectZip(proj.name)" class="btn-secondary text-xs py-1 px-2 inline-flex items-center space-x-1" title="Скачать ZIP архив для передачи">
+                                        <i class="fa-solid fa-box-archive text-[10px]"></i>
+                                        <span>ZIP</span>
+                                    </button>
+                                    <button @click="openProject(proj.name)" class="btn-primary text-xs py-1 px-2.5 inline-flex items-center space-x-1">
+                                        <span>Открыть</span>
+                                        <i class="fa-solid fa-arrow-right text-[9px]"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW 2: PROJECT STUDIO -->
+            <div v-else-if="currentView === 'studio' && activeProject" class="space-y-4 animate-fade-in">
+                <!-- Studio Subnavbar -->
+                <div class="glass-panel px-4 py-2.5 rounded flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div class="flex items-center space-x-3">
+                        <button @click="backToDashboard" class="btn-secondary py-1 px-2 text-xs inline-flex items-center space-x-1">
+                            <i class="fa-solid fa-arrow-left text-[10px]"></i>
+                            <span>К проектам</span>
+                        </button>
+                        <div class="h-5 w-px bg-slate-300"></div>
+                        <div>
+                            <span class="text-sm font-bold text-slate-900 mr-2">{{ activeProject }}</span>
+                            <span class="text-[10px] font-mono text-slate-500">{{ projectImages.length }} файлов | {{ projectClasses.length }} классов</span>
+                        </div>
+                    </div>
+
+                    <!-- Tabs -->
+                    <div class="flex flex-wrap items-center gap-1 bg-slate-200 p-0.5 rounded border border-slate-300 font-mono text-xs">
+                        <button @click="switchTab('media')" :class="activeTab === 'media' ? 'bg-white text-slate-900 font-bold shadow-sm' : 'text-slate-600 hover:text-slate-900'" class="px-2.5 py-1 rounded transition-all">
+                            1. Медиа и классы
+                        </button>
+                        <button @click="switchTab('canvas')" :class="activeTab === 'canvas' ? 'bg-white text-slate-900 font-bold shadow-sm' : 'text-slate-600 hover:text-slate-900'" class="px-2.5 py-1 rounded transition-all">
+                            2. Разметка
+                        </button>
+                        <button @click="switchTab('dataset')" :class="activeTab === 'dataset' ? 'bg-white text-slate-900 font-bold shadow-sm' : 'text-slate-600 hover:text-slate-900'" class="px-2.5 py-1 rounded transition-all">
+                            3. Датасет
+                        </button>
+                        <button @click="switchTab('train')" :class="activeTab === 'train' ? 'bg-white text-slate-900 font-bold shadow-sm' : 'text-slate-600 hover:text-slate-900'" class="px-2.5 py-1 rounded transition-all">
+                            4. Обучение YOLO26
+                        </button>
+                        <button @click="switchTab('export')" :class="activeTab === 'export' ? 'bg-white text-slate-900 font-bold shadow-sm' : 'text-slate-600 hover:text-slate-900'" class="px-2.5 py-1 rounded transition-all">
+                            5. Экспорт
+                        </button>
+                    </div>
+                </div>
+
+                <!-- TAB 1: MEDIA & CLASSES -->
+                <div v-if="activeTab === 'media'" class="grid grid-cols-1 lg:grid-cols-12 gap-4 animate-fade-in">
+                    <!-- Left: Classes -->
+                    <div class="lg:col-span-4 space-y-4">
+                        <div class="glass-panel p-4 rounded">
+                            <h2 class="font-bold text-slate-900 text-xs uppercase tracking-wider mb-3 pb-1.5 border-b border-slate-200 font-mono">
+                                Классы YOLO ({{ projectClasses.length }})
+                            </h2>
+
+                            <form @submit.prevent="addClass" class="space-y-2 bg-slate-50 p-2.5 rounded border border-slate-200 mb-4">
+                                <label class="block text-[10px] font-mono font-bold text-slate-600 uppercase">Новый класс</label>
+                                <div class="flex items-center space-x-1.5">
+                                    <input v-model="newClassName" type="text" placeholder="например: car, defect" required class="flex-1 px-2.5 py-1 text-xs border border-slate-300 rounded font-mono focus:outline-none focus:ring-1 focus:ring-slate-800">
+                                    <input v-model="newClassColor" type="color" class="w-8 h-7 p-0.5 bg-white border border-slate-300 rounded cursor-pointer">
+                                    <button type="submit" class="btn-primary py-1 px-2.5 text-xs font-mono">+</button>
+                                </div>
+                            </form>
+
+                            <div class="space-y-1.5 max-h-[350px] overflow-y-auto pr-1">
+                                <div v-if="projectClasses.length === 0" class="text-center py-5 text-slate-400 text-xs font-mono">
+                                    Список пуст
+                                </div>
+                                <div v-for="cls in projectClasses" :key="cls.id" class="flex items-center justify-between p-2 rounded bg-white border border-slate-200 shadow-sm font-mono text-xs">
+                                    <div class="flex items-center space-x-2.5">
+                                        <span class="w-3 h-3 rounded border border-black/10" :style="{ backgroundColor: cls.color || '#3b82f6' }"></span>
+                                        <span class="font-bold text-slate-900">{{ cls.name }}</span>
+                                        <span class="text-[10px] text-slate-400">ID: {{ cls.id }}</span>
+                                    </div>
+                                    <button @click="removeClass(cls.id)" class="text-slate-400 hover:text-rose-600 p-1">
+                                        <i class="fa-solid fa-trash text-xs"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Media Upload -->
+                    <div class="lg:col-span-8 space-y-4">
+                        <div class="glass-panel p-4 rounded">
+                            <h2 class="font-bold text-slate-900 text-xs uppercase tracking-wider mb-3 pb-1.5 border-b border-slate-200 font-mono flex items-center justify-between">
+                                <span>Загрузка данных (Drag & Drop)</span>
+                                <span class="text-[10px] text-slate-500">Выберите тип</span>
+                            </h2>
+
+                            <input ref="photoInput" type="file" multiple accept=".jpg,.jpeg,.png,.bmp,.webp" class="hidden" @change="onPhotoSelect">
+                            <input ref="videoInput" type="file" accept=".mp4,.avi,.mov,.mkv,.webm" class="hidden" @change="onVideoSelect">
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono">
+                                <!-- Option 1: Photos -->
+                                <div @click="triggerPhotoInput"
+                                     @dragover.prevent="onDragOver"
+                                     @dragleave.prevent="onDragLeave"
+                                     @drop.prevent="onDropPhotos"
+                                     :class="{'drag-over': isDragging}"
+                                     class="border border-dashed border-slate-300 rounded p-4 text-center bg-slate-50 hover:bg-white hover:border-slate-800 transition-all cursor-pointer group flex flex-col items-center justify-center">
+                                    <i class="fa-solid fa-camera text-xl text-slate-600 mb-2 group-hover:text-slate-900"></i>
+                                    <h3 class="font-bold text-slate-900 text-xs uppercase">Загрузить фото</h3>
+                                    <p class="text-[10px] text-slate-500 mt-0.5">.jpg, .png, .webp</p>
+                                </div>
+
+                                <!-- Option 2: Video -->
+                                <div @click="triggerVideoInput"
+                                     @dragover.prevent="onDragOver"
+                                     @dragleave.prevent="onDragLeave"
+                                     @drop.prevent="onDropVideo"
+                                     :class="{'drag-over': isDragging}"
+                                     class="border border-dashed border-slate-300 rounded p-4 text-center bg-slate-50 hover:bg-white hover:border-slate-800 transition-all cursor-pointer group flex flex-col items-center justify-center">
+                                    <i class="fa-solid fa-film text-xl text-slate-600 mb-2 group-hover:text-slate-900"></i>
+                                    <h3 class="font-bold text-slate-900 text-xs uppercase">Загрузить видео</h3>
+                                    <p class="text-[10px] text-slate-500 mt-0.5">Нарезка кадров (OpenCV)</p>
+                                </div>
+                            </div>
+
+                            <div v-if="uploading" class="mt-3 p-2 bg-slate-900 text-white rounded text-center font-mono text-xs">
+                                <i class="fa-solid fa-spinner fa-spin mr-2"></i> Сохранение файлов...
+                            </div>
+                        </div>
+
+                        <!-- Gallery -->
+                        <div class="glass-panel p-4 rounded">
+                            <div class="flex flex-wrap items-center justify-between mb-2.5 pb-2 border-b border-slate-200 font-mono text-xs gap-2">
+                                <div class="flex items-center space-x-2">
+                                    <span class="font-bold uppercase tracking-wider">Галерея ({{ projectImages.length }})</span>
+                                    <button @click="toggleSelectAllFrames" class="text-[10px] text-blue-600 hover:text-blue-800 font-bold px-2 py-0.5 bg-blue-50 rounded border border-blue-200" title="Выбрать все или снять выбор">
+                                        {{ selectedFrames.length === projectImages.length && projectImages.length > 0 ? 'Снять все' : 'Выбрать все' }}
+                                    </button>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <button v-if="selectedFrames.length > 0" @click="deleteSelectedFrames" class="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded text-[10px] shadow-sm transition-all flex items-center space-x-1">
+                                        <span>Удалить выбранные ({{ selectedFrames.length }})</span>
+                                    </button>
+                                    <button @click="deleteUnannotatedFrames" class="px-2.5 py-1 bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-700 font-bold rounded border border-slate-300 hover:border-rose-300 text-[10px] transition-all flex items-center space-x-1">
+                                        <span>Удалить все неразмеченные кадры</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div v-if="projectImages.length === 0" class="text-center py-8 text-slate-400 text-xs font-mono border rounded bg-slate-50">
+                                Нет файлов
+                            </div>
+
+                            <div v-else class="grid grid-cols-2 md:grid-cols-4 gap-2.5 max-h-[420px] overflow-y-auto p-0.5 font-mono">
+                                <div v-for="img in projectImages" :key="img.filename"
+                                     @click="openInCanvas(img)"
+                                     class="group bg-white rounded border overflow-hidden transition-all cursor-pointer flex flex-col justify-between relative"
+                                     :class="selectedFrames.includes(img.filename) ? 'border-blue-600 ring-2 ring-blue-500/50 shadow-sm' : 'border-slate-300 hover:border-slate-800'">
+                                    
+                                    <div class="aspect-video bg-slate-900 overflow-hidden relative">
+                                        <img :src="img.url" :alt="img.filename" class="w-full h-full object-cover group-hover:scale-105 transition-transform opacity-90 group-hover:opacity-100">
+                                        <div class="absolute top-1 left-1 z-10" @click.stop>
+                                            <input type="checkbox" :value="img.filename" v-model="selectedFrames" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer shadow-sm">
+                                        </div>
+                                        <div class="absolute top-1 right-1">
+                                            <span v-if="img.annotated" class="badge bg-emerald-700 text-white text-[9px]">
+                                                + {{ img.boxes_count }}
+                                            </span>
+                                            <span v-else class="badge bg-slate-900 text-slate-300 text-[9px] border border-slate-700">
+                                                Фон
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div class="p-1.5 flex items-center justify-between bg-white border-t border-slate-200 text-[10px]">
+                                        <span class="truncate font-bold text-slate-800" :title="img.filename">{{ img.filename }}</span>
+                                        <button @click.stop="deleteImage(img.filename)" class="text-slate-400 hover:text-rose-600 ml-1">
+                                            <i class="fa-solid fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 2: ANNOTATION CANVAS -->
+                <div v-else-if="activeTab === 'canvas'" class="grid grid-cols-1 lg:grid-cols-12 gap-4 animate-fade-in">
+                    <div class="lg:col-span-9 space-y-3">
+                        <!-- AI Auto-Annotation (YOLOE) Card -->
+                        <div class="glass-panel p-4 rounded space-y-3 font-mono text-xs border-l-4 border-l-slate-600">
+                            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-2">
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                                        AI Автоаннотация (YOLOE)
+                                    </span>
+                                    <span class="text-[10px] bg-slate-200 text-slate-800 font-bold px-2 py-0.5 rounded-full border border-slate-300">
+                                        Zero-Shot / Few-Shot
+                                    </span>
+                                </div>
+                                <div class="flex items-center space-x-3">
+                                    <div class="flex items-center space-x-1.5">
+                                        <span class="text-slate-600 font-bold">Модель:</span>
+                                        <select v-model="aiAutoAnnotateModel" class="px-2 py-1 font-bold rounded border border-slate-300 bg-white text-slate-800">
+                                            <option value="yoloe-26n-seg.pt">YOLOE Nano (Быстрая)</option>
+                                            <option value="yoloe-26s-seg.pt">YOLOE Small (Баланс)</option>
+                                            <option value="yoloe-26l-seg.pt">YOLOE Large (Точная)</option>
+                                            <option value="yoloe-26x-seg.pt">YOLOE X-Large (Максимальная)</option>
+                                        </select>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5">
+                                        <span class="text-slate-600 font-bold">Уверенность:</span>
+                                        <input type="range" v-model="aiAutoAnnotateConf" min="0.01" max="0.95" step="0.01" class="w-20 accent-slate-800">
+                                        <span class="font-bold text-slate-800 w-8 text-right">{{ Math.round(aiAutoAnnotateConf * 100) }}%</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                <div class="flex items-center space-x-1 bg-slate-100 p-1 rounded border border-slate-300">
+                                    <button @click="aiAutoAnnotateMode = 'text'" :class="aiAutoAnnotateMode === 'text' ? 'bg-slate-800 text-white font-bold shadow-sm' : 'text-slate-600 hover:text-slate-900'" class="px-3 py-1 rounded transition-all">
+                                        По описанию (Text Prompt)
+                                    </button>
+                                    <button @click="aiAutoAnnotateMode = 'visual'" :class="aiAutoAnnotateMode === 'visual' ? 'bg-slate-800 text-white font-bold shadow-sm' : 'text-slate-600 hover:text-slate-900'" class="px-3 py-1 rounded transition-all">
+                                        По референсу (Visual Prompt)
+                                    </button>
+                                </div>
+
+                                <div class="flex items-center space-x-2">
+                                    <label class="flex items-center space-x-1.5 cursor-pointer text-slate-600">
+                                        <input type="checkbox" v-model="aiAutoAnnotateOverwrite" class="rounded border-slate-300 text-slate-800 focus:ring-slate-500">
+                                        <span>Перезаписывать существующую разметку</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Text Mode Panel -->
+                            <div v-if="aiAutoAnnotateMode === 'text'" class="bg-slate-100 p-3 rounded border border-slate-300 flex flex-wrap items-center justify-between gap-3 animate-fade-in">
+                                <div class="flex-1 flex items-center space-x-2 min-w-[280px]">
+                                    <input type="text" v-model="aiAutoAnnotateText" placeholder="Что ищем? (например: car, person, defect)..." class="w-full px-3 py-1.5 rounded border border-slate-300 bg-white font-mono text-xs focus:ring-2 focus:ring-slate-500/30 outline-none">
+                                    <button @click="fillPromptsWithProjectClasses" class="px-2.5 py-1.5 bg-white border border-slate-300 text-slate-700 hover:bg-slate-200 rounded font-bold whitespace-nowrap transition-all" title="Заполнить из списка классов проекта">
+                                        Классы проекта
+                                    </button>
+                                </div>
+                                <button @click="runAiAutoAnnotate" :disabled="aiAutoAnnotateLoading" class="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded font-bold shadow-sm transition-all flex items-center space-x-1.5 disabled:opacity-50 whitespace-nowrap">
+                                    <span v-if="aiAutoAnnotateLoading" class="animate-spin"><i class="fa-solid fa-spinner"></i></span>
+                                    <span>{{ aiAutoAnnotateLoading ? 'Разметка датасета...' : 'Запустить авторазметку по тексту' }}</span>
+                                </button>
+                            </div>
+
+                            <!-- Visual Mode Panel -->
+                            <div v-else-if="aiAutoAnnotateMode === 'visual'" class="bg-slate-100 p-3 rounded border border-slate-300 flex flex-wrap items-center justify-between gap-3 animate-fade-in">
+                                <div class="flex-1 text-slate-700 space-y-1">
+                                    <div class="font-bold text-slate-900 flex items-center gap-1.5">
+                                        <span>Обучение по примерам с текущего кадра (Few-Shot)</span>
+                                    </div>
+                                    <div class="text-[11px] text-slate-600">
+                                        Обведите рамками 1–2 примера искомых объектов на текущем открытом кадре. YOLOE извлечет визуальный эмбеддинг (VPE) и найдет аналогичные объекты на всех остальных фотографиях.
+                                    </div>
+                                </div>
+                                <button @click="runAiAutoAnnotate" :disabled="aiAutoAnnotateLoading" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded font-bold shadow-sm transition-all flex items-center space-x-1.5 disabled:opacity-50 whitespace-nowrap">
+                                    <span v-if="aiAutoAnnotateLoading" class="animate-spin"><i class="fa-solid fa-spinner"></i></span>
+                                    <span>{{ aiAutoAnnotateLoading ? 'Анализ VPE и разметка...' : 'Разметить датасет по текущему кадру' }}</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Toolbar -->
+                        <div class="glass-panel px-4 py-2 rounded flex flex-wrap items-center justify-between gap-3 font-mono text-xs">
+                            <div class="flex items-center space-x-3">
+                                <div class="flex items-center space-x-1.5">
+                                    <span class="font-bold text-slate-700">Класс:</span>
+                                    <select v-model="selectedClassId" class="px-2 py-0.5 font-bold rounded border border-slate-300 bg-white">
+                                        <option v-for="cls in projectClasses" :key="cls.id" :value="cls.id">
+                                            {{ cls.name }} [ID: {{ cls.id }}]
+                                        </option>
+                                    </select>
+                                </div>
+
+                                <div class="h-4 w-px bg-slate-300"></div>
+
+                                <div class="flex items-center space-x-1 bg-slate-100 p-0.5 rounded border border-slate-300">
+                                    <button @click="canvasMode = 'draw'" :class="canvasMode === 'draw' ? 'bg-slate-900 text-white font-bold' : 'text-slate-600'" class="px-2 py-0.5 rounded transition-all">
+                                        Рисовать
+                                    </button>
+                                    <button @click="canvasMode = 'select'" :class="canvasMode === 'select' ? 'bg-slate-900 text-white font-bold' : 'text-slate-600'" class="px-2 py-0.5 rounded transition-all">
+                                        Выбрать
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center space-x-2">
+                                <div class="flex items-center space-x-1 bg-slate-100 p-0.5 rounded border border-slate-300">
+                                    <button @click="navigateImage(-1)" class="px-2 py-0.5 text-slate-700 hover:text-slate-900 font-bold" title="Предыдущий кадр (← или A)">←</button>
+                                    <button @click="navigateImage(1)" class="px-2 py-0.5 text-slate-700 hover:text-slate-900 font-bold" title="Следующий кадр (→ или D)">→</button>
+                                </div>
+
+                                <div class="flex items-center space-x-1 bg-slate-100 p-0.5 rounded border border-slate-300">
+                                    <button @click="zoomCanvas(1.2)" class="px-1.5 py-0.5 text-slate-700 hover:text-slate-900">+</button>
+                                    <button @click="zoomCanvas(0.8)" class="px-1.5 py-0.5 text-slate-700 hover:text-slate-900">-</button>
+                                    <button @click="resetCanvasZoom" class="px-1.5 py-0.5 text-slate-700 hover:text-slate-900 font-bold">Сброс</button>
+                                </div>
+
+                                <button @click="deleteSelectedBox" :disabled="!hasSelectedBox" class="btn-danger py-0.5 px-2 text-xs disabled:opacity-40">
+                                    Удалить
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Canvas -->
+                        <div class="canvas-wrapper w-full h-[580px] flex items-center justify-center relative">
+                            <div v-if="!currentImage" class="text-center text-slate-400 font-mono text-xs">
+                                Выберите файл из списка для разметки
+                            </div>
+                            <canvas ref="canvasEl" id="fabricCanvas" class="w-full h-full"></canvas>
+
+                            <div class="absolute bottom-2 left-2 bg-slate-900/90 text-slate-300 font-mono text-[10px] px-2 py-1 rounded border border-slate-700 pointer-events-none">
+                                Пробел / ПКМ — перемещение | Колесико — зум | Del — удаление
+                            </div>
+                            <div v-if="currentImage" class="absolute top-2 right-2 bg-slate-900/90 text-emerald-400 font-mono text-[10px] px-2 py-1 rounded border border-slate-700 pointer-events-none">
+                                Автосохранение
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Sidebar -->
+                    <div class="lg:col-span-3 space-y-4 font-mono">
+                        <div class="glass-panel p-3.5 rounded">
+                            <h3 class="font-bold text-slate-900 text-xs uppercase mb-2 pb-1 border-b border-slate-200 flex justify-between">
+                                <span>Рамки ({{ currentBoxes.length }})</span>
+                                <span v-if="currentImage" class="text-[10px] text-slate-500 truncate max-w-[100px]">{{ currentImage.filename }}</span>
+                            </h3>
+
+                            <div v-if="!currentImage || currentBoxes.length === 0" class="text-center py-4 text-slate-400 text-[10px]">
+                                Нет рамок
+                            </div>
+
+                            <div v-else class="space-y-1 max-h-[220px] overflow-y-auto pr-1">
+                                <div v-for="(box, idx) in currentBoxes" :key="idx"
+                                     @click="selectBoxByIndex(idx)"
+                                     class="p-1.5 rounded bg-white border border-slate-300 cursor-pointer flex items-center justify-between text-xs"
+                                     :class="{'border-slate-900 bg-slate-50': selectedBoxIndex === idx}">
+                                    <div class="flex items-center space-x-1.5 truncate">
+                                        <span class="w-2.5 h-2.5 rounded flex-shrink-0" :style="{ backgroundColor: getClassColor(box.class_id) }"></span>
+                                        <select v-model="box.class_id" @change="onBoxClassChange(idx, box.class_id)" @click.stop class="bg-white border border-slate-300 rounded px-1 py-0.2 text-[10px] font-bold">
+                                            <option v-for="c in projectClasses" :key="c.id" :value="c.id">{{ c.name }}</option>
+                                        </select>
+                                    </div>
+                                    <button @click.stop="deleteBoxByIndex(idx)" class="text-slate-400 hover:text-rose-600">
+                                        <i class="fa-solid fa-xmark"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Navigator -->
+                        <div class="glass-panel p-3.5 rounded">
+                            <h3 class="font-bold text-slate-900 text-xs uppercase mb-2 pb-1 border-b border-slate-200 flex justify-between items-center">
+                                <span>Файлы ({{ projectImages.length }})</span>
+                                <button @click="toggleSelectAllFrames" class="text-[10px] text-blue-600 hover:text-blue-800 font-bold px-1.5 py-0.5 bg-blue-50 rounded border border-blue-200" title="Выбрать все или снять выбор">
+                                    {{ selectedFrames.length === projectImages.length && projectImages.length > 0 ? 'Снять все' : 'Выбрать все' }}
+                                </button>
+                            </h3>
+
+                            <!-- Batch Actions Header -->
+                            <div class="mb-2 space-y-1.5">
+                                <div v-if="selectedFrames.length > 0" class="flex items-center justify-between bg-rose-50 p-1.5 rounded border border-rose-200">
+                                    <span class="text-[10px] font-bold text-rose-800">Выбрано: {{ selectedFrames.length }}</span>
+                                    <button @click="deleteSelectedFrames" class="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded text-[10px] shadow-sm transition-all">
+                                        Удалить выбранные
+                                    </button>
+                                </div>
+                                <button @click="deleteUnannotatedFrames" class="w-full py-1.5 px-2 bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-700 font-bold rounded border border-slate-300 hover:border-rose-300 text-[10px] transition-all flex items-center justify-center space-x-1">
+                                    <span>Удалить все неразмеченные кадры</span>
+                                </button>
+                            </div>
+
+                            <div class="space-y-1 max-h-[280px] overflow-y-auto pr-1">
+                                <div v-for="img in projectImages" :key="img.filename"
+                                     class="p-1.5 rounded border flex items-center justify-between text-xs transition-all"
+                                     :class="currentImage && currentImage.filename === img.filename ? 'bg-slate-900 border-slate-900 text-white font-bold' : 'bg-white border-slate-200 text-slate-800'">
+                                    <div class="flex items-center space-x-1.5 truncate flex-1 mr-1">
+                                        <input type="checkbox" :value="img.filename" v-model="selectedFrames" @click.stop class="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3 h-3 cursor-pointer flex-shrink-0">
+                                        <span @click="openInCanvas(img)" class="truncate text-[10px] cursor-pointer flex-1">{{ img.filename }}</span>
+                                    </div>
+                                    <div @click="openInCanvas(img)" class="cursor-pointer flex-shrink-0">
+                                        <span v-if="img.annotated" class="text-[9px] text-emerald-600 font-bold">+ {{ img.boxes_count }}</span>
+                                        <span v-else class="text-[9px] text-slate-400">фон</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 3: DATASET GENERATOR -->
+                <div v-else-if="activeTab === 'dataset'" class="max-w-3xl mx-auto space-y-4 animate-fade-in font-mono">
+                    <!-- Recommendation Banner -->
+                    <div v-if="trainingRecommendations.length > 0" class="p-3 rounded bg-amber-50 border border-amber-300 text-amber-900 space-y-1 text-xs">
+                        <div class="font-bold flex items-center space-x-2 text-amber-800">
+                            <i class="fa-solid fa-triangle-exclamation text-amber-600"></i>
+                            <span>Рекомендации для стабильного распознавания на видео:</span>
+                        </div>
+                        <ul class="list-disc list-inside space-y-0.5 pl-1 text-[11px] text-amber-900">
+                            <li v-for="(warn, idx) in trainingRecommendations" :key="idx">{{ warn }}</li>
+                        </ul>
+                    </div>
+
+                    <div class="glass-panel p-5 rounded space-y-4">
+                        <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+                            <h2 class="font-bold text-slate-900 text-xs uppercase tracking-wider">Сборка датасета YOLO26</h2>
+                            <span class="text-xs text-slate-500">YAML + txt (нормализация 0..1)</span>
+                        </div>
+
+                        <div class="bg-slate-50 p-4 rounded border border-slate-200 space-y-2 text-xs">
+                            <div class="flex justify-between font-bold">
+                                <span>Пропорция Train / Val</span>
+                                <span>{{ Math.round(trainRatio * 100) }}% Train / {{ Math.round((1 - trainRatio) * 100) }}% Val</span>
+                            </div>
+                            <input v-model.number="trainRatio" type="range" min="0.5" max="0.95" step="0.05" class="w-full h-1.5 bg-slate-300 rounded cursor-pointer accent-slate-900">
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3 text-xs text-slate-600">
+                            <div class="p-3 rounded bg-white border border-slate-200">
+                                <span class="font-bold text-slate-900 block mb-1">Идемпотентность</span>
+                                Папка dataset/ очищается и пересоздается с нуля при каждой сборке.
+                            </div>
+                            <div class="p-3 rounded bg-white border border-slate-200">
+                                <span class="font-bold text-slate-900 block mb-1">Фоновые кадры</span>
+                                Кадры без разметки переносятся без .txt файлов (чистый фон).
+                            </div>
+                        </div>
+
+                        <button @click="generateDataset" :disabled="generatingDataset || projectImages.length === 0" class="btn-primary w-full py-2.5 text-xs font-bold">
+                            {{ generatingDataset ? 'Сборка...' : 'Сформировать датасет YOLO26' }}
+                        </button>
+
+                        <div v-if="datasetStats" class="p-4 rounded bg-slate-900 text-white border border-slate-800 space-y-3 text-xs">
+                            <span class="text-emerald-400 font-bold block">Датасет готов</span>
+                            <div class="grid grid-cols-4 gap-2 text-center bg-slate-850 p-2 rounded">
+                                <div><span class="text-[9px] text-slate-400 block">ВСЕГО</span><b>{{ datasetStats.total_images }}</b></div>
+                                <div><span class="text-[9px] text-slate-400 block">TRAIN</span><b>{{ datasetStats.train_images }}</b></div>
+                                <div><span class="text-[9px] text-slate-400 block">VAL</span><b>{{ datasetStats.val_images }}</b></div>
+                                <div><span class="text-[9px] text-slate-400 block">ФОН</span><b>{{ datasetStats.background_images }}</b></div>
+                            </div>
+                            <div class="text-[10px] text-slate-400 bg-slate-950 p-2 rounded truncate select-all">
+                                {{ datasetStats.yaml_path }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 4: TRAINING STUDIO (YOLO26 ONLY) -->
+                <div v-else-if="activeTab === 'train'" class="grid grid-cols-1 lg:grid-cols-12 gap-4 animate-fade-in font-mono">
+                    <div class="lg:col-span-4 space-y-4">
+                        <!-- Recommendation Banner -->
+                        <div v-if="trainingRecommendations.length > 0" class="p-3 rounded bg-amber-50 border border-amber-300 text-amber-900 space-y-1 text-xs">
+                            <div class="font-bold flex items-center space-x-2 text-amber-800">
+                                <i class="fa-solid fa-triangle-exclamation text-amber-600"></i>
+                                <span>Рекомендации:</span>
+                            </div>
+                            <ul class="list-disc list-inside space-y-0.5 pl-1 text-[11px] text-amber-900">
+                                <li v-for="(warn, idx) in trainingRecommendations" :key="idx">{{ warn }}</li>
+                            </ul>
+                        </div>
+
+                        <div class="glass-panel p-4 rounded space-y-3 text-xs">
+                            <h2 class="font-bold text-slate-900 uppercase pb-1.5 border-b border-slate-200">Параметры обучения YOLO26</h2>
+
+                            <form @submit.prevent="startTrain" class="space-y-3">
+                                <div>
+                                    <label class="block font-bold text-slate-700 mb-1">Модель YOLO26</label>
+                                    <select v-model="trainForm.model_name" class="w-full px-2 py-1.5 font-bold rounded border border-slate-300 bg-white">
+                                        <option value="yolo26n.pt">YOLO26 Nano (yolo26n.pt) — Нано / Скорость</option>
+                                        <option value="yolo26s.pt">YOLO26 Small (yolo26s.pt) — Баланс</option>
+                                        <option value="yolo26m.pt">YOLO26 Medium (yolo26m.pt) — Точность</option>
+                                        <option value="yolo26l.pt">YOLO26 Large (yolo26l.pt) — Высокая точность</option>
+                                        <option value="yolo26x.pt">YOLO26 X-Large (yolo26x.pt) — Макс. точность</option>
+                                        <option value="yoloe-26s.pt">YOLOE-26 Small — Edge End-to-End</option>
+                                        <option value="yoloe-26m.pt">YOLOE-26 Medium — Edge End-to-End</option>
+                                    </select>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block font-bold text-slate-700 mb-1">Эпохи</label>
+                                        <input v-model.number="trainForm.epochs" type="number" min="1" max="1000" class="w-full px-2 py-1 border border-slate-300 rounded">
+                                    </div>
+                                    <div>
+                                        <label class="block font-bold text-slate-700 mb-1">Батч</label>
+                                        <input v-model.number="trainForm.batch_size" type="number" min="1" max="256" class="w-full px-2 py-1 border border-slate-300 rounded">
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block font-bold text-slate-700 mb-1">Размер (imgsz)</label>
+                                        <input v-model.number="trainForm.imgsz" type="number" step="32" class="w-full px-2 py-1 border border-slate-300 rounded">
+                                    </div>
+                                    <div>
+                                        <label class="block font-bold text-slate-700 mb-1">Устройство</label>
+                                        <select v-model="trainForm.device" class="w-full px-2 py-1 font-bold rounded border border-slate-300 bg-white">
+                                            <option value="auto">Автовыбор (CUDA / Mac MPS / CPU)</option>
+                                            <option value="cpu">Процессор (CPU)</option>
+                                            <option value="0">NVIDIA GPU (CUDA)</option>
+                                            <option value="mps">Mac GPU (Apple Silicon M1-M4)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block font-bold text-slate-700 mb-1">Имя запуска</label>
+                                    <input v-model="trainForm.run_name" type="text" class="w-full px-2 py-1 border border-slate-300 rounded">
+                                </div>
+
+                                <div class="pt-1">
+                                    <button v-if="!trainStatus.is_running" type="submit" class="btn-primary w-full py-2 font-bold">
+                                        Запустить обучение YOLO26
+                                    </button>
+                                    <button v-else @click.prevent="stopTrain" type="button" class="w-full py-2 bg-rose-700 text-white font-bold rounded">
+                                        Остановить процесс (VRAM)
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-8 space-y-4">
+                        <div class="glass-panel p-4 rounded space-y-3">
+                            <div class="flex items-center justify-between pb-1.5 border-b border-slate-200 text-xs">
+                                <span class="font-bold uppercase">Терминал обучения (Multiprocessing / WebSockets)</span>
+                                <button @click="terminalLogs = []" class="text-slate-400 hover:text-slate-700 underline">Очистить</button>
+                            </div>
+
+                            <div v-if="trainProgress.total_epochs > 0" class="p-2.5 rounded bg-slate-50 border border-slate-300 space-y-1.5 text-xs">
+                                <div class="flex justify-between font-bold">
+                                    <span>Эпоха: {{ trainProgress.epoch }} / {{ trainProgress.total_epochs }}</span>
+                                    <span>{{ Math.round((trainProgress.epoch / trainProgress.total_epochs) * 100) }}%</span>
+                                </div>
+                                <div class="w-full h-1.5 bg-slate-200 rounded overflow-hidden">
+                                    <div class="h-full bg-slate-900 transition-all duration-500" :style="{ width: ((trainProgress.epoch / trainProgress.total_epochs) * 100) + '%' }"></div>
+                                </div>
+                                <div v-if="Object.keys(trainProgress.metrics).length > 0" class="flex flex-wrap gap-1.5 pt-1">
+                                    <span v-for="(val, key) in trainProgress.metrics" :key="key" class="badge bg-white border border-slate-300 text-[10px]">
+                                        <b>{{ key }}:</b> {{ val }}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="terminal-box p-3">
+                                <div ref="terminalScrollEl" class="terminal-scroll space-y-1 text-xs">
+                                    <div v-if="terminalLogs.length === 0" class="text-slate-500 italic py-6 text-center">
+                                        Логи появятся при запуске обучения...
+                                    </div>
+                                    <div v-for="(log, idx) in terminalLogs" :key="idx" class="flex items-start space-x-2">
+                                        <span class="text-slate-500 select-none text-[10px]">[{{ log.timestamp }}]</span>
+                                        <span :class="log.type === 'error' ? 'text-rose-400 font-bold' : (log.stream === 'stderr' ? 'text-amber-300' : 'text-slate-300')" class="flex-1 break-words">
+                                            {{ log.message }}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 5: EXPORT & MODELS -->
+                <div v-else-if="activeTab === 'export'" class="grid grid-cols-1 lg:grid-cols-12 gap-4 animate-fade-in font-mono text-xs">
+                    <div class="lg:col-span-5 space-y-4">
+                        <div class="glass-panel p-4 rounded space-y-3">
+                            <h2 class="font-bold text-slate-900 uppercase pb-1.5 border-b border-slate-200">Экспорт модели</h2>
+
+                            <form @submit.prevent="exportModelRun" class="space-y-3">
+                                <div>
+                                    <label class="block font-bold text-slate-700 mb-1">Файл весов (best.pt)</label>
+                                    <select v-model="exportForm.weights_path" class="w-full px-2 py-1.5 font-bold rounded border border-slate-300 bg-white">
+                                        <option :value="null">-- Автовыбор последних весов --</option>
+                                        <option v-for="m in trainedModels" :key="m.path" :value="m.path">
+                                            {{ m.run_name }} / {{ m.filename }} ({{ m.size_mb }} МБ) {{ m.is_best ? '[Best]' : '' }}
+                                        </option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="block font-bold text-slate-700 mb-1">Формат экспорта</label>
+                                    <select v-model="exportForm.format" class="w-full px-2 py-1.5 font-bold rounded border border-slate-300 bg-white">
+                                        <option value="onnx">ONNX (.onnx)</option>
+                                        <option value="engine">TensorRT (.engine)</option>
+                                        <option value="torchscript">TorchScript (.torchscript)</option>
+                                        <option value="openvino">OpenVINO</option>
+                                        <option value="coreml">CoreML (.mlpackage)</option>
+                                    </select>
+                                </div>
+
+                                <button type="submit" :disabled="exporting" class="btn-primary w-full py-2 font-bold">
+                                    {{ exporting ? 'Экспорт...' : 'Экспортировать модель' }}
+                                </button>
+                            </form>
+
+                            <div v-if="lastExportResult" class="p-3 rounded bg-slate-900 text-white border border-slate-800 space-y-2">
+                                <span class="font-bold text-emerald-400 block">Экспорт завершен</span>
+                                <div class="text-[10px] text-slate-400 truncate">{{ lastExportResult.exported_path }}</div>
+                                <a :href="lastExportResult.download_url" target="_blank" class="btn-primary w-full py-1.5 text-xs font-bold block text-center bg-emerald-700 hover:bg-emerald-800">
+                                    Скачать ({{ lastExportResult.size_mb }} МБ)
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-7 space-y-4">
+                        <div class="glass-panel p-4 rounded">
+                            <div class="flex items-center justify-between mb-2.5 pb-1.5 border-b border-slate-200">
+                                <span class="font-bold uppercase">Архив моделей (runs/)</span>
+                                <button @click="fetchModels" class="text-slate-500 hover:text-slate-900 underline">Обновить</button>
+                            </div>
+
+                            <div v-if="trainedModels.length === 0" class="text-center py-8 text-slate-400 border rounded bg-slate-50">
+                                Нет обученных моделей
+                            </div>
+
+                            <div v-else class="space-y-2 max-h-[450px] overflow-y-auto pr-1">
+                                <div v-for="mod in trainedModels" :key="mod.path" class="p-2.5 rounded bg-white border border-slate-300 flex items-center justify-between">
+                                    <div>
+                                        <div class="font-bold text-slate-900">
+                                            {{ mod.run_name }} / {{ mod.filename }}
+                                            <span v-if="mod.is_best" class="badge bg-amber-100 text-amber-900 text-[9px] ml-1">Best</span>
+                                        </div>
+                                        <div class="text-[10px] text-slate-400">{{ mod.size_mb }} МБ | {{ mod.path }}</div>
+                                    </div>
+                                    <a :href="mod.download_url" target="_blank" class="btn-secondary py-1 px-2 font-bold text-[11px]">
+                                        Скачать
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODAL: Create Project -->
+            <div v-if="showCreateModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 animate-fade-in font-mono text-xs">
+                <div class="glass-panel max-w-sm w-full p-5 rounded bg-white border border-slate-300">
+                    <h3 class="font-bold text-slate-900 uppercase mb-3">Новый проект YOLO26</h3>
+                    <form @submit.prevent="createProjectSubmit" class="space-y-3">
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">Название (без пробелов)</label>
+                            <input v-model="createForm.name" type="text" placeholder="my_dataset" required pattern="[a-zA-Z0-9_-]+" class="w-full px-2.5 py-1.5 border border-slate-300 rounded">
+                        </div>
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">Описание</label>
+                            <textarea v-model="createForm.description" rows="2" class="w-full px-2.5 py-1.5 border border-slate-300 rounded"></textarea>
+                        </div>
+                        <div class="pt-1 flex justify-end space-x-2">
+                            <button type="button" @click="showCreateModal = false" class="btn-secondary">Отмена</button>
+                            <button type="submit" class="btn-primary">Создать</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- MODAL: Video Slicing -->
+            <div v-if="showVideoModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 animate-fade-in font-mono text-xs">
+                <div class="glass-panel max-w-sm w-full p-5 rounded bg-white border border-slate-300">
+                    <h3 class="font-bold text-slate-900 uppercase mb-3">Раскадровка видео (OpenCV)</h3>
+                    <form @submit.prevent="submitVideoUpload" class="space-y-3">
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">Режим</label>
+                            <select v-model="videoForm.step_mode" class="w-full px-2.5 py-1.5 font-bold rounded border border-slate-300 bg-white">
+                                <option value="nth_frame">Каждый N-ый кадр</option>
+                                <option value="fps">N кадров в секунду</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">Значение N</label>
+                            <input v-model.number="videoForm.step_value" type="number" min="1" max="1000" required class="w-full px-2.5 py-1.5 border border-slate-300 rounded">
+                        </div>
+                        <div class="pt-1 flex justify-end space-x-2">
+                            <button type="button" @click="cancelVideoUpload" class="btn-secondary">Отмена</button>
+                            <button type="submit" class="btn-primary">Разрезать</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Application Script -->
+    <script src="/js/app.js"></script>
+</body>
+</html>
